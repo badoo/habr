@@ -1,0 +1,58 @@
+diff --git a/ext/standard/php_fopen_wrapper.c b/ext/standard/php_fopen_wrapper.c
+index f8d7bda..fee964c 100644
+--- a/ext/standard/php_fopen_wrapper.c
++++ b/ext/standard/php_fopen_wrapper.c
+@@ -24,6 +24,7 @@
+ #if HAVE_UNISTD_H
+ #include <unistd.h>
+ #endif
++#include <fcntl.h>
+ 
+ #include "php.h"
+ #include "php_globals.h"
+@@ -296,11 +297,11 @@ php_stream * php_stream_url_wrap_php(php_stream_wrapper *wrapper, char *path, ch
+ 				"The file descriptors must be non-negative numbers smaller than %d", dtablesize);
+ 			return NULL;
+ 		}
+-		
+-		fd = dup(fildes_ori);
+-		if (fd == -1) {
++
++		fd = fildes_ori;
++		if (fcntl(fildes_ori, F_GETFD) == -1) {
+ 			php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+-				"Error duping file descriptor %ld; possibly it doesn't exist: "
++				"File descriptor %ld invalid: "
+ 				"[%d]: %s", fildes_ori, errno, strerror(errno));
+ 			return NULL;
+ 		}
+diff --git a/ext/standard/streamsfuncs.c b/ext/standard/streamsfuncs.c
+index 0610ecf..14fd3b0 100644
+--- a/ext/standard/streamsfuncs.c
++++ b/ext/standard/streamsfuncs.c
+@@ -24,6 +24,7 @@
+ #include "ext/standard/flock_compat.h"
+ #include "ext/standard/file.h"
+ #include "ext/standard/php_filestat.h"
++#include "ext/standard/php_fopen_wrappers.h"
+ #include "php_open_temporary_file.h"
+ #include "ext/standard/basic_functions.h"
+ #include "php_ini.h"
+@@ -484,6 +485,7 @@ PHP_FUNCTION(stream_get_meta_data)
+ 	zval *arg1;
+ 	php_stream *stream;
+ 	zval *newval;
++	int tmp_fd;
+ 
+ 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "r", &arg1) == FAILURE) {
+ 		return;
+@@ -502,6 +504,9 @@ PHP_FUNCTION(stream_get_meta_data)
+ 		add_assoc_string(return_value, "wrapper_type", (char *)stream->wrapper->wops->label, 1);
+ 	}
+ 	add_assoc_string(return_value, "stream_type", (char *)stream->ops->label, 1);
++	if (SUCCESS == php_stream_cast(stream, PHP_STREAM_AS_FD_FOR_SELECT | PHP_STREAM_CAST_INTERNAL, (void*)&tmp_fd, 1) && tmp_fd != -1) {
++		add_assoc_long(return_value, "fd", tmp_fd);
++	}
+ 
+ 	add_assoc_string(return_value, "mode", stream->mode, 1);
+ 
